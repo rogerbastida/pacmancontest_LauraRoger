@@ -149,7 +149,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         #distance_to_ghost -> distancia del pacman al ghost
         #ghost_state -> El ghost espantat o no espantat
 
-
     def get_features(self, game_state, action):
         features = util.Counter()
         successor = self.get_successor(game_state, action) #successorgamestate
@@ -163,7 +162,12 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # 2) Compute distance to the nearest food
         if len(food_list) > 0:  # This should always be True,  but better safe than sorry
             min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
-            features['distance_to_food'] = min_distance
+            if min_distance < 3:
+                features['distance_to_food'] = min_distance
+            elif min_distance < 7:
+                features['distance_to_food'] = min_distance * 0.8
+            else:
+                features['distance_to_food'] = min_distance * 0.4
 
         # 3) Num of ghosts
         enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
@@ -172,14 +176,23 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         #4) Distance to ghosts
         if len(ghosts) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in ghosts]
-            features['ghosts_distance'] = min(dists)
+            ghost_dist = min(dists)
+            if ghost_dist < 5:
+                features['ghosts_distance'] = min(dists)
+            elif ghost_dist < 8:
+                features['ghosts_distance'] = min(dists) * 0.7
+            else:
+                features['ghosts_distance'] = min(dists) * 0.3
+
 
         # 5) stop
         if action == Directions.STOP: features['stop'] = 1
         
         # 6) reverse
         rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
-        if action == rev: features['reverse'] = 1
+        if action == rev:
+            features['reverse'] = 1
+
         
 
         # 7) eaten_food * dist_to_home
@@ -232,7 +245,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # 9) Scared_ghosts
         for ghost in ghosts:
             if ghost.scared_timer > 5:
-                features['ghosts_distance'] = - features['ghosts_distance']/10 #Kill ghosts
+                features['ghosts_distance'] = - features['ghosts_distance']/8 #Kill ghosts
                 features['successor_score'] = features['successor_score'] * 3 #Eat a lot of food
                 features['eaten_foodxdist_to_home'] = 0 #So it do not return home
 
@@ -250,13 +263,13 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         if len(invaders) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
             enemy_dist = min(dists)
-            if not my_state.is_pacman or enemy_dist < 9: #or enemy_dist < :
+            if not my_state.is_pacman or enemy_dist < 5:
                 features['invader_distance'] = enemy_dist
 
         return features
 
     def get_weights(self, game_state, action):
-        return {'successor_score': 150, 'distance_to_food': -4, 'num_ghosts': -5, 'ghosts_distance': 500, 'stop': -10000, 'reverse': -5, 'eaten_foodxdist_to_home': -4, 'score':100, 'distance_to_capsule': -5, 'successor_capsules': 40, 'invader_distance': -20}
+        return {'successor_score': 200, 'distance_to_food': -6, 'ghosts_distance': 600, 'stop': -100, 'reverse': -5, 'eaten_foodxdist_to_home': -4, 'score':100, 'distance_to_capsule': -5, 'successor_capsules': 40, 'invader_distance': -20}
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
@@ -298,7 +311,12 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         our_ghosts = [a for a in team_agents if not a.is_pacman and a.get_position() is not None]
         for ghost in our_ghosts:
             if ghost.scared_timer > 0:
-                features['invader_distance'] = -features['invader_distance']
+                if features['invader_distance'] < 4:
+                    features['invader_distance'] = -features['invader_distance']
+                elif features['invader_distance'] < 7: 
+                    features['invader_distance'] = -features['invader_distance'] * 0.7
+                else:
+                    features['invader_distance'] = -features['invader_distance'] * 0.3
 
         # 7) distance to our food (avg) (for camping our food)
         if len(food_to_protect_list) > 0:  # This should always be True,  but better safe than sorry
@@ -338,9 +356,36 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         agent_distance = -10000
         for agent in our_agents:
             agent_distance = max(self.get_maze_distance(my_pos, agent.get_position()), agent_distance)
-        features['dist_from_other_agent'] = agent_distance
+        if agent_distance < 4:
+            features['dist_from_other_agent'] = agent_distance
+        elif agent_distance < 7:
+            features['dist_from_other_agent'] = agent_distance * 0.6
+        else:
+            features['dist_from_other_agent'] = agent_distance * 0.3
+
+        
+        # 11) min_dist_from_all_enemies
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        invaders = [a for a in enemies if a.get_position() is not None]
+        distancia = []
+        if len(invaders) > 0:
+            distancia = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
+            if min(distancia) < 3:
+                features['min_dist_from_all_enemies'] = min(distancia)
+            elif min(distancia) < 6:
+                features['min_dist_from_all_enemies'] = min(distancia) * 0.5
+            else:
+                features['min_dist_from_all_enemies'] = min(distancia) * 0.3
+        # 12) max_dist_from_all_enemies (the other one)
+            if max(distancia) < 3:
+                features['max_dist_from_all_enemies'] = max(distancia)
+            elif max(distancia) < 6:
+                features['max_dist_from_all_enemies'] = max(distancia) * 0.5
+            else:
+                features['max_dist_from_all_enemies'] = max(distancia) * 0.3
+        
         return features
     
     def get_weights(self, game_state, action):
-        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -15, 'stop': -100, 'reverse': -2, 'distance_to_our_food': -1, 'random_factor': -0.7, 'dist_to_frontier': -0.3, 'dist_from_other_agent': 0.2}
+        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -15, 'stop': -100, 'reverse': -2, 'distance_to_our_food': -1, 'random_factor': -0.7, 'dist_to_frontier': -0.3, 'dist_from_other_agent': 0.2, 'min_dist_from_all_enemies': -5, 'max_dist_from_all_enemies': -1}
 
