@@ -245,13 +245,12 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         features['successor_capsules'] = -len(capsules_list)
 
         # 12) Kill in my_field
-
         enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
         invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
         if len(invaders) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
             enemy_dist = min(dists)
-            if not my_state.is_pacman or enemy_dist < 9:
+            if not my_state.is_pacman or enemy_dist < 9: #or enemy_dist < :
                 features['invader_distance'] = enemy_dist
 
         return features
@@ -271,27 +270,77 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     def get_features(self, game_state, action):
         features = util.Counter()
         successor = self.get_successor(game_state, action)
-
+        food_to_protect_list = self.get_food_you_are_defending(successor).as_list()
+        capsules_to_protect_list = self.get_capsules_you_are_defending(successor)
         my_state = successor.get_agent_state(self.index)
         my_pos = my_state.get_position()
 
-        # Computes whether we're on defense (1) or offense (0)
+        # 1) on_defense Computes whether we're on defense (1) or offense (0)
         features['on_defense'] = 1
         if my_state.is_pacman: features['on_defense'] = 0
 
-        # Computes distance to invaders we can see
+        # 2) num_invaders Computes distance to invaders we can see
         enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
         invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
         features['num_invaders'] = len(invaders)
+        # 3) invader distance
         if len(invaders) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
             features['invader_distance'] = min(dists)
-
+        # 4) Stop
         if action == Directions.STOP: features['stop'] = 1
+        # 5) Reverse
         rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
+        
+        # 6) we_scared (if we are scares, then we run away the pacman)
+        team_agents = [successor.get_agent_state(i) for i in self.get_team(successor)]
+        our_ghosts = [a for a in team_agents if not a.is_pacman and a.get_position() is not None]
+        for ghost in our_ghosts:
+            if ghost.scared_timer > 0:
+                features['invader_distance'] = -features['invader_distance']
+
+        # 7) distance to our food (avg) (for camping our food)
+        if len(food_to_protect_list) > 0:  # This should always be True,  but better safe than sorry
+            distances = ([self.get_maze_distance(my_pos, food) for food in food_to_protect_list])
+            avg_distance = sum(distances)/len(distances)
+            features['distance_to_our_food'] = avg_distance
+        
+        # 8) random_factor (to get some random moves)
+        features['random_factor'] = random.random() #util.flipCoin(0.5)
+
+        # 9) dist_to_frontier (as the other team will enter from the frontier)
+        half_width = successor.data.layout.width // 2
+        height = successor.data.layout.height
+        if self.red: #Determine my half of the grid and know the frontier
+            i = half_width - 1
+        else:
+            i = half_width + 1
+        
+        l_pos = []
+        for j in range(height):
+            l_pos.append((i,j))
+        
+        validPositions = []
+        for i in l_pos:
+            if not successor.has_wall(i[0], i[1]): #If the position has a wall we don't consider it
+                validPositions.append(i)
+
+        dist = 100000
+        for validPosition in validPositions:
+            dist = min(self.get_maze_distance(my_pos, validPosition), dist)
+        dist_to_home = dist
+        features['dist_to_frontier'] = dist_to_home
+
+        # 10) dist_from_other_agent (avoiding both agents to be very close so they can look more terrain)
+        team_agents = [successor.get_agent_state(i) for i in self.get_team(successor)] #I know i have it on top
+        our_agents = [a for a in team_agents if a.get_position() is not None] #I know it's the sam
+        agent_distance = -10000
+        for agent in our_agents:
+            agent_distance = max(self.get_maze_distance(my_pos, agent.get_position()), agent_distance)
+        features['dist_from_other_agent'] = agent_distance
         return features
     
     def get_weights(self, game_state, action):
-        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
+        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -15, 'stop': -100, 'reverse': -2, 'distance_to_our_food': -1, 'random_factor': -0.7, 'dist_to_frontier': -0.3, 'dist_from_other_agent': 0.2}
 
