@@ -27,6 +27,8 @@ from captureAgents import CaptureAgent
 from game import Directions
 from util import nearestPoint
 
+import capture
+
 
 #################
 # Team creation #
@@ -154,11 +156,11 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         food_list = self.get_food(successor).as_list()
         capsules_list = self.get_capsules(successor)
         defend_food_list = self.get_food_you_are_defending(successor).as_list()
+        my_pos = successor.get_agent_state(self.index).get_position()
         features['successor_score'] = -len(food_list)  # 1) Eaten food
 
         # 2) Compute distance to the nearest food
         if len(food_list) > 0:  # This should always be True,  but better safe than sorry
-            my_pos = successor.get_agent_state(self.index).get_position()
             min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
             features['distance_to_food'] = min_distance
 
@@ -180,6 +182,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         
 
         # 7) eaten_food * dist_to_home
+        #eaten_food
         #initial_food_eat = self.register_initial_state(game_state).get_food()
         #initial_food_defend = self.register_initial_state.get_food_you_are_defending()
         
@@ -191,11 +194,35 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
         current_eaten_food = initial_food_eat + initial_food_defend - myfood_eaten - len(food_list) - len(defend_food_list) - self.get_score(successor) #Food eaten and not saved
 
+        #dist_to_home
+        '''
+        #primitve_dist_to_home
         dist = 100000
         for pos in defend_food_list:
             dist = min(self.get_maze_distance(my_pos, pos), dist)
-        dist_to_home = dist        
+        dist_to_home = dist
+        '''
+        half_width = successor.data.layout.width // 2
+        height = successor.data.layout.height
+        if self.red: #Determine my half of the grid and know the frontier
+            i = half_width - 1
+        else:
+            i = half_width + 1
+        
+        l_pos = []
+        for j in range(height):
+            l_pos.append((i,j))
+        
+        validPositions = []
+        for i in l_pos:
+            if not successor.has_wall(i[0], i[1]): #If the position has a wall we don't consider it
+                validPositions.append(i)
 
+        dist = 100000
+        for validPosition in validPositions:
+            dist = min(self.get_maze_distance(my_pos, validPosition), dist)
+        dist_to_home = dist
+        
         features['eaten_foodxdist_to_home'] = (current_eaten_food * dist_to_home)
 
         # 8) Score
@@ -210,28 +237,23 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
         # 10)Capsules
         if len(capsules_list) > 0:
-            my_pos = successor.get_agent_state(self.index).get_position()
             min_distance = min([self.get_maze_distance(my_pos, capsule) for capsule in capsules_list])
             features['distance_to_capsule'] = min_distance
         
         # 11) successor_capsules
         features['successor_capsules'] = -len(capsules_list)
 
-        # 13) Kill in my_field
+        # 12) Kill in my_field
         enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
         invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
         if len(invaders) > 0:
             dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
             features['invader_distance'] = min(dists)
-        
-
-        
-
 
         return features
 
     def get_weights(self, game_state, action):
-        return {'successor_score': 150, 'distance_to_food': -5, 'num_ghosts': -5, 'ghosts_distance': 500, 'stop': -10000, 'reverse': -3, 'eaten_foodxdist_to_home': -4, 'score':100, 'distance_to_capsule': -5, 'successor_capsules': 50, 'invader_distance': -25}
+        return {'successor_score': 150, 'distance_to_food': -5, 'num_ghosts': -5, 'ghosts_distance': 500, 'stop': -10000, 'reverse': -5, 'eaten_foodxdist_to_home': -4, 'score':100, 'distance_to_capsule': -5, 'successor_capsules': 40, 'invader_distance': -20}
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
